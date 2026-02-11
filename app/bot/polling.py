@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import httpx
@@ -17,6 +18,9 @@ from app.worker.claude_exec import run_claude
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://api.telegram.org/bot{token}"
+
+# Thread pool for concurrent claude requests
+_executor = ThreadPoolExecutor(max_workers=settings.claude_global_concurrency)
 
 
 def _url(method: str) -> str:
@@ -76,6 +80,9 @@ def _do_ask(chat_id: int, user_id: int, prompt: str) -> None:
     if not prompt.strip():
         _send_sync(chat_id, "Please provide a question, e.g.: `/ask how to sort a list?`")
         return
+
+    # Immediately acknowledge the message
+    _send_sync(chat_id, "Received, thinking...")
 
     # Start typing indicator
     stop_typing = threading.Event()
@@ -146,12 +153,13 @@ def _handle_message(message: dict[str, Any]) -> None:
         return
 
     if cmd == "/ask":
-        _do_ask(chat_id, user_id, arg)
+        # Submit to thread pool — don't block polling loop
+        _executor.submit(_do_ask, chat_id, user_id, arg)
         return
 
     # Direct chat mode: treat any non-command text as a claude prompt
     if not cmd and settings.direct_chat:
-        _do_ask(chat_id, user_id, text)
+        _executor.submit(_do_ask, chat_id, user_id, text)
         return
 
     return
@@ -168,6 +176,7 @@ def run_polling() -> None:
         client.post(_url("deleteWebhook"))
 
     print(f"TeleClaudeCode polling started (bot token ...{token[-6:]})")
+    print(f"Concurrent workers: {settings.claude_global_concurrency}")
     print("Press Ctrl+C to stop.\n")
 
     offset = 0
@@ -195,7 +204,9 @@ def run_polling() -> None:
                         logger.exception("handle_error update_id=%s", update.get("update_id"))
 
         except KeyboardInterrupt:
-            print("\nStopped.")
+            print("\nShutting down thread pool...")
+            _executor.shutdown(wait=False)
+            print("Stopped.")
             break
         except Exception:
             logger.exception("polling_error")
