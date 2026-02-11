@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # Claude Code
     claude_bin: str = "claude"
-    claude_timeout_sec: int = 120
+    claude_timeout_sec: int = 300
     claude_max_output_chars: int = 12000
     claude_concurrency_per_user: int = 1
     claude_global_concurrency: int = 4

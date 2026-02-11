@@ -8,7 +8,7 @@ def test_default_settings():
     from app.config import Settings
     s = Settings(telegram_bot_token="test")
     assert s.claude_bin == "claude"
-    assert s.claude_timeout_sec == 120
+    assert s.claude_timeout_sec == 300
     assert s.direct_chat is True
     assert s.mode == "polling"
 
